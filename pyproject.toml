@@ -12,3 +12,12 @@ dependencies = [
     "pydantic-settings>=2.7.0",
     "uvicorn>=0.42.0",
 ]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.24.0",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
