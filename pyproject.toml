@@ -1,0 +1,14 @@
+[project]
+name = "llm-gateway"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "anthropic>=0.52.0",
+    "fastapi>=0.135.1",
+    "google-genai",
+    "ollama>=0.4.8",
+    "pydantic-settings>=2.7.0",
+    "uvicorn>=0.42.0",
+]
