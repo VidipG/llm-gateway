@@ -43,6 +43,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.providers = providers
     logger.info("Providers initialized: %s", list(providers.keys()))
 
+    # Shutdown logic after yield
     yield
 
     ollama = providers.get("ollama")

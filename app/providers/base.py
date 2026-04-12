@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import AsyncIterator, Literal
+from typing import AsyncGenerator, Literal
 
 from app.schemas.request import Message, CompletionRequest
 from app.schemas.response import StreamChunk
@@ -16,7 +16,7 @@ class ProviderError(Exception):
 class Provider(ABC):
 
     @abstractmethod
-    async def stream(self, request: CompletionRequest, model: str, request_id: str) -> AsyncIterator[StreamChunk]:
+    def stream(self, request: CompletionRequest, model: str, request_id: str) -> AsyncGenerator[StreamChunk]:
         ...
 
     @abstractmethod
