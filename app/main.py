@@ -4,13 +4,11 @@ from contextlib import asynccontextmanager
 from typing import AsyncIterator
 
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
 
+from app.api.exceptions import register_exception_handlers
 from app.api.routes import completions, health
 from app.config import get_settings
-from app.gateway.router import ConfigurationError, UnknownModelError
 from app.providers.anthropic import AnthropicProvider
-from app.providers.base import ProviderError
 from app.providers.gemini import GeminiProvider
 from app.providers.ollama import OllamaProvider
 
@@ -52,11 +50,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     logger.info("Shutdown complete")
 
 
-app = FastAPI(
-    title="llm-gateway",
-    version="0.1.0",
-    lifespan=lifespan,
-)
+app = FastAPI(title="llm-gateway", version="0.1.0", lifespan=lifespan)
+
+register_exception_handlers(app)
 
 
 @app.middleware("http")
@@ -66,26 +62,6 @@ async def attach_request_id(request: Request, call_next):
     response = await call_next(request)
     response.headers["X-Request-Id"] = request_id
     return response
-
-
-@app.exception_handler(ProviderError)
-async def provider_error_handler(request: Request, exc: ProviderError):
-    logger.error("Provider error [%s]: %s", exc.provider_name, exc.message)
-    return JSONResponse(
-        status_code=502,
-        content={"error": exc.message, "provider": exc.provider_name},
-    )
-
-
-@app.exception_handler(UnknownModelError)
-async def unknown_model_handler(request: Request, exc: UnknownModelError):
-    return JSONResponse(status_code=404, content={"error": str(exc)})
-
-
-@app.exception_handler(ConfigurationError)
-async def configuration_error_handler(request: Request, exc: ConfigurationError):
-    logger.error("Configuration error: %s", exc)
-    return JSONResponse(status_code=500, content={"error": str(exc)})
 
 
 app.include_router(health.router, prefix="/health", tags=["health"])

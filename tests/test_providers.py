@@ -23,7 +23,8 @@ def make_request(messages: list[dict], **kwargs) -> CompletionRequest:
 class TestAnthropicProvider:
 
     def make_provider(self) -> AnthropicProvider:
-        with patch("app.providers.anthropic.anthropic.AsyncAnthropic"):
+        with patch("app.providers.anthropic.AsyncAnthropic"), \
+             patch("app.providers.anthropic.DefaultAioHttpClient"):
             return AnthropicProvider(api_key="test", timeout=30.0)
 
     @pytest.mark.asyncio
@@ -224,7 +225,7 @@ class TestOllamaProvider:
                 pass
 
         assert exc_info.value.provider_name == "ollama"
-        assert "localhost" in exc_info.value.message
+        assert "Connection refused" in exc_info.value.message
 
 
 # ---------------------------------------------------------------------------

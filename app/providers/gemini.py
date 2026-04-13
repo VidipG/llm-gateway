@@ -1,12 +1,25 @@
-from typing import AsyncIterator
+from typing import AsyncGenerator
 
 from google import genai
 from google.genai import types
 from google.genai.types import HttpOptions
+from google.genai.errors import ClientError, ServerError
 
-from app.providers.base import Provider, ProviderError
+from app.providers.base import (
+    Provider,
+    ProviderError,
+    ProviderUnavailableError,
+    map_provider_exception,
+)
 from app.schemas.request import CompletionRequest
 from app.schemas.response import StreamChunk
+
+# ServerError (5xx) maps directly to ProviderUnavailableError.
+# ClientError (4xx) is not included — it falls through to _STATUS_CODE_MAP
+# in map_provider_exception, which resolves 401→Auth, 429→RateLimit, 400→Invalid, etc.
+_EXCEPTION_MAP: dict[type[Exception], type[ProviderError]] = {
+    ServerError: ProviderUnavailableError,
+}
 
 
 class GeminiProvider(Provider):
@@ -17,7 +30,7 @@ class GeminiProvider(Provider):
             http_options=HttpOptions(timeout=timeout_ms),
         )
 
-    async def stream(self, request: CompletionRequest, model: str, request_id: str) -> AsyncIterator[StreamChunk]:
+    async def stream(self, request: CompletionRequest, model: str, request_id: str) -> AsyncGenerator[StreamChunk, None]:
         system_prompt, messages = self.extract_system_prompt(request.messages)
         mapped_messages = [
             types.Content(
@@ -52,11 +65,11 @@ class GeminiProvider(Provider):
                         finish_reason=finish_reason,
                     )
         except Exception as e:
-            raise ProviderError(str(e), provider_name="gemini") from e
+            raise map_provider_exception(e, provider_name="gemini", exception_map=_EXCEPTION_MAP) from e
 
     async def health_check(self) -> bool:
         try:
-            async for _ in self.client.aio.models.list():
+            async for _ in await self.client.aio.models.list():
                 return True
             return False
         except Exception:

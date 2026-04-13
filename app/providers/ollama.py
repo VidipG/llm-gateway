@@ -1,10 +1,22 @@
-from typing import AsyncIterator
+from typing import AsyncGenerator
 
-from ollama import AsyncClient, ResponseError
+from ollama import AsyncClient, RequestError, ResponseError
 
-from app.providers.base import Provider, ProviderError
+from app.providers.base import (
+    Provider,
+    ProviderError,
+    ProviderUnavailableError,
+    map_provider_exception,
+)
 from app.schemas.request import CompletionRequest
 from app.schemas.response import StreamChunk
+
+# RequestError (connection-level failure) maps directly to ProviderUnavailableError.
+# ResponseError (HTTP error with status_code) falls through to _STATUS_CODE_MAP
+# in map_provider_exception, which resolves 401→Auth, 429→RateLimit, 400→Invalid, etc.
+_EXCEPTION_MAP: dict[type[Exception], type[ProviderError]] = {
+    RequestError: ProviderUnavailableError,
+}
 
 
 class OllamaProvider(Provider):
@@ -12,7 +24,7 @@ class OllamaProvider(Provider):
         self.base_url = base_url
         self.client = AsyncClient(host=base_url, timeout=timeout)
 
-    async def stream(self, request: CompletionRequest, model: str, request_id: str) -> AsyncIterator[StreamChunk]:
+    async def stream(self, request: CompletionRequest, model: str, request_id: str) -> AsyncGenerator[StreamChunk, None]:
         messages = [{"role": m.role, "content": m.content} for m in request.messages]
         options = {
             **({"temperature": request.temperature} if request.temperature is not None else {}),
@@ -35,10 +47,8 @@ class OllamaProvider(Provider):
                         delta=delta,
                         finish_reason=finish_reason,
                     )
-        except ResponseError as e:
-            raise ProviderError(str(e), provider_name="ollama", status_code=e.status_code) from e
         except Exception as e:
-            raise ProviderError(f"Ollama unreachable at {self.base_url}", provider_name="ollama") from e
+            raise map_provider_exception(e, provider_name="ollama", exception_map=_EXCEPTION_MAP) from e
 
     async def health_check(self) -> bool:
         try:
