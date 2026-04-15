@@ -10,6 +10,8 @@ dependencies = [
     "google-genai",
     "ollama>=0.4.8",
     "pydantic-settings>=2.7.0",
+    "fastembed>=0.3.0",
+    "semantic-router>=0.1.12",
     "uvicorn>=0.42.0",
 ]
 
