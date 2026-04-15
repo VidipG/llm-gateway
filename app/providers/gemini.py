@@ -3,7 +3,7 @@ from typing import AsyncGenerator
 from google import genai
 from google.genai import types
 from google.genai.types import HttpOptions
-from google.genai.errors import ClientError, ServerError
+from google.genai.errors import ServerError
 
 from app.providers.base import (
     Provider,
@@ -12,7 +12,7 @@ from app.providers.base import (
     map_provider_exception,
 )
 from app.schemas.request import CompletionRequest
-from app.schemas.response import StreamChunk
+from app.schemas.response import StreamChunk, UsageEvent
 
 # ServerError (5xx) maps directly to ProviderUnavailableError.
 # ClientError (4xx) is not included — it falls through to _STATUS_CODE_MAP
@@ -30,8 +30,10 @@ class GeminiProvider(Provider):
             http_options=HttpOptions(timeout=timeout_ms),
         )
 
-    async def stream(self, request: CompletionRequest, model: str, request_id: str) -> AsyncGenerator[StreamChunk, None]:
+    async def stream(self, request: CompletionRequest, model: str, request_id: str) -> AsyncGenerator[StreamChunk | UsageEvent, None]:
         system_prompt, messages = self.extract_system_prompt(request.messages)
+        input_tokens = None
+        output_tokens = None
         mapped_messages = [
             types.Content(
                 role="model" if msg.role == "assistant" else msg.role,
@@ -64,8 +66,13 @@ class GeminiProvider(Provider):
                         delta=chunk.text or "",
                         finish_reason=finish_reason,
                     )
+                if chunk.usage_metadata:
+                    input_tokens = chunk.usage_metadata.prompt_token_count
+                    output_tokens = chunk.usage_metadata.candidates_token_count
         except Exception as e:
             raise map_provider_exception(e, provider_name="gemini", exception_map=_EXCEPTION_MAP) from e
+
+        yield UsageEvent(input_tokens=input_tokens, output_tokens=output_tokens, model=model, provider="gemini")
 
     async def health_check(self) -> bool:
         try:

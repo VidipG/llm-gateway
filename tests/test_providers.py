@@ -137,6 +137,7 @@ class TestGeminiProvider:
 
     @pytest.mark.asyncio
     async def test_yields_stream_chunks(self):
+        from app.schemas.response import UsageEvent
         provider = self.make_provider()
         request = make_request([{"role": "user", "content": "Hello"}])
 
@@ -145,15 +146,46 @@ class TestGeminiProvider:
                 chunk = MagicMock()
                 chunk.text = text
                 chunk.candidates = []
+                chunk.usage_metadata = None
                 yield chunk
 
         provider.client.aio.models.generate_content_stream = AsyncMock(return_value=fake_stream())
 
-        chunks = [c async for c in provider.stream(request, "gemini-2.0-flash", "req-1")]
+        events = [c async for c in provider.stream(request, "gemini-2.0-flash", "req-1")]
+        chunks = [e for e in events if not isinstance(e, UsageEvent)]
 
         assert len(chunks) == 2
         assert chunks[0].delta == "Hello"
         assert chunks[1].delta == " there"
+
+    @pytest.mark.asyncio
+    async def test_yields_usage_event_with_token_counts(self):
+        from app.schemas.response import UsageEvent
+        provider = self.make_provider()
+        request = make_request([{"role": "user", "content": "Hello"}])
+
+        async def fake_stream(**kwargs):
+            chunk = MagicMock()
+            chunk.text = "Hi"
+            chunk.candidates = []
+            chunk.usage_metadata = None
+            yield chunk
+            final = MagicMock()
+            final.text = ""
+            final.candidates = []
+            final.usage_metadata = MagicMock()
+            final.usage_metadata.prompt_token_count = 10
+            final.usage_metadata.candidates_token_count = 5
+            yield final
+
+        provider.client.aio.models.generate_content_stream = AsyncMock(return_value=fake_stream())
+
+        events = [c async for c in provider.stream(request, "gemini-2.0-flash", "req-1")]
+        usage = next(e for e in events if isinstance(e, UsageEvent))
+
+        assert usage.input_tokens == 10
+        assert usage.output_tokens == 5
+        assert usage.provider == "gemini"
 
 
 # ---------------------------------------------------------------------------
