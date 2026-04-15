@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 from typing import AsyncGenerator, Literal
 
 from app.schemas.request import Message, CompletionRequest
-from app.schemas.response import StreamChunk
+from app.schemas.response import StreamChunk, UsageEvent
 
 
 class ProviderError(Exception):
@@ -53,7 +53,7 @@ def map_provider_exception(
 class Provider(ABC):
 
     @abstractmethod
-    def stream(self, request: CompletionRequest, model: str, request_id: str) -> AsyncGenerator[StreamChunk, None]:
+    def stream(self, request: CompletionRequest, model: str, request_id: str) -> AsyncGenerator[StreamChunk | UsageEvent, None]:
         ...
 
     @abstractmethod

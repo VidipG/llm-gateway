@@ -23,7 +23,7 @@ from app.providers.base import (
     map_provider_exception,
 )
 from app.schemas.request import CompletionRequest
-from app.schemas.response import StreamChunk
+from app.schemas.response import StreamChunk, UsageEvent
 
 # APITimeoutError must precede APIConnectionError — it is a subclass
 _EXCEPTION_MAP: dict[type[Exception], type[ProviderError]] = {
@@ -44,10 +44,11 @@ class AnthropicProvider(Provider):
             api_key=api_key, timeout=timeout, http_client=DefaultAioHttpClient()
         )
 
-    async def stream(self, request: CompletionRequest, model: str, request_id: str) -> AsyncGenerator[StreamChunk, None]:
+    async def stream(self, request: CompletionRequest, model: str, request_id: str) -> AsyncGenerator[StreamChunk | UsageEvent, None]:
         system_prompt, messages = self.extract_system_prompt(request.messages)
-        # Anthropic expects {role, content} dict
         mapped_messages = [{"role": m.role, "content": m.content} for m in messages]
+        input_tokens = None
+        output_tokens = None
 
         try:
             kwargs = {
@@ -62,7 +63,9 @@ class AnthropicProvider(Provider):
 
             async with self.client.messages.stream(**kwargs) as stream:
                 async for event in stream:
-                    if (
+                    if event.type == "message_start":
+                        input_tokens = event.message.usage.input_tokens
+                    elif (
                         event.type == "content_block_delta"
                         and event.delta.type == "text_delta"
                     ):
@@ -71,15 +74,25 @@ class AnthropicProvider(Provider):
                             model=model,
                             delta=event.delta.text,
                         )
-                    elif event.type == "message_delta" and event.delta.stop_reason:
-                        yield StreamChunk(
-                            id=request_id,
-                            model=model,
-                            delta="",
-                            finish_reason=self.normalize_finish_reason(event.delta.stop_reason),
-                        )
+                    elif event.type == "message_delta":
+                        if hasattr(event, "usage") and event.usage:
+                            output_tokens = event.usage.output_tokens
+                        if event.delta.stop_reason:
+                            yield StreamChunk(
+                                id=request_id,
+                                model=model,
+                                delta="",
+                                finish_reason=self.normalize_finish_reason(event.delta.stop_reason),
+                            )
         except Exception as e:
             raise map_provider_exception(e, provider_name="anthropic", exception_map=_EXCEPTION_MAP) from e
+
+        yield UsageEvent(
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            model=model,
+            provider="anthropic",
+        )
 
     async def health_check(self) -> bool:
         try:
