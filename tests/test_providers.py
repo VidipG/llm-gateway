@@ -71,7 +71,9 @@ class TestAnthropicProvider:
         stream_cm.__aiter__ = MagicMock(return_value=aiter(events))  # async generator
         provider.client.messages.stream = MagicMock(return_value=stream_cm)
 
-        chunks = [c async for c in provider.stream(request, "claude-sonnet-4-6", "req-1")]
+        from app.schemas.response import UsageEvent
+        events = [c async for c in provider.stream(request, "claude-sonnet-4-6", "req-1")]
+        chunks = [e for e in events if not isinstance(e, UsageEvent)]
 
         assert len(chunks) == 2
         assert chunks[0].delta == "Hello"
