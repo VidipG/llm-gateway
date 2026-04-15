@@ -11,6 +11,7 @@ from app.config import get_settings
 from app.providers.anthropic import AnthropicProvider
 from app.providers.gemini import GeminiProvider
 from app.providers.ollama import OllamaProvider
+from app.gateway.semantic_router import SemanticRouter
 
 logger = logging.getLogger(__name__)
 
@@ -38,10 +39,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     if not ollama_ok:
         logger.warning("Ollama unreachable at %s — ollama provider disabled", settings.ollama_base_url)
 
+    semantic_router = SemanticRouter()
+    await semantic_router.initialize()
+
     app.state.providers = providers
+    app.state.semantic_router = semantic_router
     logger.info("Providers initialized: %s", list(providers.keys()))
 
-    # Shutdown logic after yield
     yield
 
     ollama = providers.get("ollama")
