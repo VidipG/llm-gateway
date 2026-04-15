@@ -9,7 +9,7 @@ from app.providers.base import (
     map_provider_exception,
 )
 from app.schemas.request import CompletionRequest
-from app.schemas.response import StreamChunk
+from app.schemas.response import StreamChunk, UsageEvent
 
 # RequestError (connection-level failure) maps directly to ProviderUnavailableError.
 # ResponseError (HTTP error with status_code) falls through to _STATUS_CODE_MAP
@@ -24,12 +24,14 @@ class OllamaProvider(Provider):
         self.base_url = base_url
         self.client = AsyncClient(host=base_url, timeout=timeout)
 
-    async def stream(self, request: CompletionRequest, model: str, request_id: str) -> AsyncGenerator[StreamChunk, None]:
+    async def stream(self, request: CompletionRequest, model: str, request_id: str) -> AsyncGenerator[StreamChunk | UsageEvent, None]:
         messages = [{"role": m.role, "content": m.content} for m in request.messages]
         options = {
             **({"temperature": request.temperature} if request.temperature is not None else {}),
             **({"num_predict": request.max_tokens} if request.max_tokens is not None else {}),
         }
+        input_tokens = None
+        output_tokens = None
 
         try:
             async for chunk in await self.client.chat(
@@ -47,8 +49,18 @@ class OllamaProvider(Provider):
                         delta=delta,
                         finish_reason=finish_reason,
                     )
+                if chunk.done:
+                    input_tokens = chunk.prompt_eval_count
+                    output_tokens = chunk.eval_count
         except Exception as e:
             raise map_provider_exception(e, provider_name="ollama", exception_map=_EXCEPTION_MAP) from e
+
+        yield UsageEvent(
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            model=model,
+            provider="ollama",
+        )
 
     async def health_check(self) -> bool:
         try:

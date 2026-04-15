@@ -223,6 +223,7 @@ class TestOllamaProvider:
 
     @pytest.mark.asyncio
     async def test_yields_stream_chunks(self):
+        from app.schemas.response import UsageEvent
         provider = self.make_provider()
         request = make_request([{"role": "user", "content": "Hello"}])
 
@@ -237,15 +238,47 @@ class TestOllamaProvider:
             final.message.content = ""
             final.done = True
             final.done_reason = "stop"
+            final.prompt_eval_count = None
+            final.eval_count = None
             yield final
 
         provider.client.chat = AsyncMock(return_value=fake_chat())
 
-        chunks = [c async for c in provider.stream(request, "llama3.2", "req-1")]
+        events = [c async for c in provider.stream(request, "llama3.2", "req-1")]
+        chunks = [e for e in events if not isinstance(e, UsageEvent)]
 
         assert chunks[0].delta == "Hello"
         assert chunks[1].delta == " world"
         assert chunks[-1].finish_reason == "stop"
+
+    @pytest.mark.asyncio
+    async def test_yields_usage_event_with_token_counts(self):
+        from app.schemas.response import UsageEvent
+        provider = self.make_provider()
+        request = make_request([{"role": "user", "content": "Hello"}])
+
+        async def fake_chat(**kwargs):
+            chunk = MagicMock()
+            chunk.message.content = "Hi"
+            chunk.done = False
+            chunk.done_reason = None
+            yield chunk
+            final = MagicMock()
+            final.message.content = ""
+            final.done = True
+            final.done_reason = "stop"
+            final.prompt_eval_count = 8
+            final.eval_count = 3
+            yield final
+
+        provider.client.chat = AsyncMock(return_value=fake_chat())
+
+        events = [c async for c in provider.stream(request, "llama3.2", "req-1")]
+        usage = next(e for e in events if isinstance(e, UsageEvent))
+
+        assert usage.input_tokens == 8
+        assert usage.output_tokens == 3
+        assert usage.provider == "ollama"
 
     @pytest.mark.asyncio
     async def test_wraps_connection_error(self):
