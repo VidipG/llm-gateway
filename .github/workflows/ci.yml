@@ -24,9 +24,18 @@ jobs:
       - name: Install dependencies
         run: uv sync --group dev
 
-      - name: Run tests
-        run: uv run pytest tests/ -v
+      - name: Run tests with coverage
+        run: uv run coverage run -m pytest tests/ -v
         env:
           GATEWAY_API_KEY: test-key
           ANTHROPIC_API_KEY: test-key
           GEMINI_API_KEY: test-key
+
+      - name: Generate coverage report
+        run: uv run coverage report -m
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          files: ./coverage.xml
+          flags: unittests
