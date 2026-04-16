@@ -2,9 +2,9 @@ import logging
 from functools import singledispatch
 from typing import AsyncIterator
 
-from app.config import Settings
-from app.gateway.router import ModelRouter
-from app.providers.base import Provider, ProviderError
+from app.gateway.errors import ConfigurationError, UnknownModelError
+from app.gateway.router import Router
+from app.providers.base import ProviderError
 from app.schemas.request import CompletionRequest
 from app.schemas.response import ErrorEvent, StreamChunk, UsageEvent
 
@@ -12,11 +12,18 @@ logger = logging.getLogger(__name__)
 
 
 class Dispatcher:
-    def __init__(self, providers: dict[str, Provider], settings: Settings):
-        self.router = ModelRouter(settings=settings, providers=providers)
+    def __init__(self, router: Router):
+        self.router = router
 
     async def stream(self, request: CompletionRequest, request_id: str) -> AsyncIterator[str]:
-        provider, model = self.router.resolve(request.model)
+        try:
+            provider, model = await self.router.resolve(request.model, request.messages)
+        except UnknownModelError as e:
+            yield _format_error(str(e), 404)
+            return
+        except ConfigurationError as e:
+            yield _format_error(str(e), 500)
+            return
 
         try:
             async for event in provider.stream(request, model, request_id):
@@ -24,7 +31,7 @@ class Dispatcher:
                     yield sse
         except ProviderError as e:
             logger.error("Provider error during stream [%s]: %s", e.provider_name, e.message)
-            yield _format_error(e)
+            yield _format_error(e.message, e.status_code or 502)
             return
 
         yield "data: [DONE]\n\n"
@@ -48,6 +55,5 @@ def _(event: UsageEvent, request_id: str) -> None:
     )
 
 
-def _format_error(error: ProviderError) -> str:
-    event = ErrorEvent(error=error.message, code=error.status_code or 502)
-    return f"event: error\ndata: {event.model_dump_json()}\n\n"
+def _format_error(message: str, code: int) -> str:
+    return f"event: error\ndata: {ErrorEvent(error=message, code=code).model_dump_json()}\n\n"

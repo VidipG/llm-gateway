@@ -1,9 +1,17 @@
+import asyncio
+from typing import List
+
 from semantic_router import SemanticRouter as _SemanticRouter
 from semantic_router.route import Route
 from semantic_router.encoders import FastEmbedEncoder
 
-from app.gateway.router import UnknownModelError
+from app.gateway.errors import UnknownModelError
 from app.schemas.request import Message
+
+
+class _AsyncFastEmbedEncoder(FastEmbedEncoder):
+    async def acall(self, docs: List[str]) -> List[List[float]]:
+        return await asyncio.to_thread(super().__call__, docs)
 
 
 _PROVIDER_ROUTES: list[Route] = [
@@ -60,7 +68,7 @@ _MODEL_ROUTES: dict[str, list[Route]] = {
         ]),
     ],
     "ollama": [
-        Route(name="llama3.2", utterances=[
+        Route(name="qwen3.5", utterances=[
             "general purpose task",
             "chat with a local model",
             "standard local inference",
@@ -74,9 +82,16 @@ _MODEL_ROUTES: dict[str, list[Route]] = {
 }
 
 
+def _matched_name(result, label: str) -> str:
+    choice = result[0] if isinstance(result, list) else result
+    if choice.name is None:
+        raise UnknownModelError(f"Semantic routing could not match a {label}")
+    return choice.name
+
+
 class SemanticRouter:
     def __init__(self):
-        self._encoder = FastEmbedEncoder(name="BAAI/bge-small-en-v1.5")
+        self._encoder = _AsyncFastEmbedEncoder(name="BAAI/bge-small-en-v1.5")
         self._provider_router = _SemanticRouter(encoder=self._encoder, aggregation="max")
         self._model_routers = {
             provider: _SemanticRouter(encoder=self._encoder, aggregation="max")
@@ -89,17 +104,7 @@ class SemanticRouter:
             await self._model_routers[provider].aadd(routes)
 
     async def resolve(self, messages: list[Message]) -> tuple[str, str]:
-        query = messages[-1].content
-        vector = (await self._encoder.acall([query]))[0]
-
-        provider_result = await self._provider_router.acall(vector=vector)
-        provider_choice = provider_result[0] if isinstance(provider_result, list) else provider_result
-        if provider_choice.name is None:
-            raise UnknownModelError("Semantic routing failed to match a provider")
-
-        model_result = await self._model_routers[provider_choice.name].acall(vector=vector)
-        model_choice = model_result[0] if isinstance(model_result, list) else model_result
-        if model_choice.name is None:
-            raise UnknownModelError(f"Semantic routing failed to match a model for provider '{provider_choice.name}'")
-
-        return provider_choice.name, model_choice.name
+        vector = (await self._encoder.acall([messages[-1].content]))[0]
+        provider = _matched_name(await self._provider_router.acall(vector=vector), "provider")
+        model = _matched_name(await self._model_routers[provider].acall(vector=vector), "model")
+        return provider, model

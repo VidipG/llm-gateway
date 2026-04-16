@@ -3,7 +3,7 @@ import logging
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
-from app.gateway.router import ConfigurationError, UnknownModelError
+from app.gateway.errors import ConfigurationError, UnknownModelError
 from app.providers.base import (
     AuthenticationError,
     InvalidRequestError,

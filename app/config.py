@@ -30,9 +30,10 @@ class Settings(BaseSettings):
     }
 
     model_aliases: dict[str, str] = {
+        "auto":  "gemini-2.0-flash",
         "fast":  "gemini-2.0-flash",
         "smart": "claude-opus-4-6",
-        "local": "llama3.2",
+        "local": "qwen3.5",
     }
 
     # per-provider timeouts in seconds
