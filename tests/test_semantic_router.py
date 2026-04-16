@@ -24,7 +24,7 @@ def make_router() -> SemanticRouter:
     Without this, _provider_router and all _model_routers share the
     same object — assigning .acall on one overwrites the others.
     """
-    with patch("app.gateway.semantic_router.FastEmbedEncoder"), \
+    with patch("app.gateway.semantic_router._AsyncFastEmbedEncoder"), \
          patch("app.gateway.semantic_router._SemanticRouter") as mock_sr_cls:
         mock_sr_cls.side_effect = lambda *a, **kw: MagicMock()
         return SemanticRouter()
@@ -37,7 +37,7 @@ def make_router() -> SemanticRouter:
 class TestSemanticRouterInit:
 
     def test_encoder_instantiated_inside_init(self):
-        with patch("app.gateway.semantic_router.FastEmbedEncoder") as mock_encoder_cls, \
+        with patch("app.gateway.semantic_router._AsyncFastEmbedEncoder") as mock_encoder_cls, \
              patch("app.gateway.semantic_router._SemanticRouter") as mock_sr_cls:
             mock_sr_cls.side_effect = lambda *a, **kw: MagicMock()
             SemanticRouter()
@@ -49,7 +49,7 @@ class TestSemanticRouterInit:
 
     def test_encoder_not_instantiated_at_import_time(self):
         # Confirms no module-level _encoder variable exists.
-        # If FastEmbedEncoder were called at import time the attribute would
+        # If _AsyncFastEmbedEncoder were called at import time the attribute would
         # be present on the module regardless of patching.
         import app.gateway.semantic_router as mod
         assert not hasattr(mod, "_encoder")

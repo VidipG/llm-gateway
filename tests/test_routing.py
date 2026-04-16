@@ -9,12 +9,12 @@ from app.schemas.request import Message
 
 
 def make_settings(**overrides) -> Settings:
-    base = dict(
+    return Settings.model_construct(
         gateway_api_key="test",
         anthropic_api_key="test",
         gemini_api_key="test",
+        **overrides,
     )
-    return Settings(**{**base, **overrides})
 
 
 def make_provider() -> Provider:
