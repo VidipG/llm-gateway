@@ -16,5 +16,5 @@ jobs:
 
       - name: Audit dependencies for known vulnerabilities
         run: |
-          uv export --frozen --no-dev --hash -o /tmp/requirements.txt
+          uv export --frozen --no-dev --hashes -o /tmp/requirements.txt
           uvx pip-audit --requirement /tmp/requirements.txt --no-deps
