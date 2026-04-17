@@ -1,5 +1,4 @@
 import asyncio
-from typing import List
 
 from semantic_router import SemanticRouter as _SemanticRouter
 from semantic_router.route import Route
@@ -10,7 +9,7 @@ from app.schemas.request import Message
 
 
 class _AsyncFastEmbedEncoder(FastEmbedEncoder):
-    async def acall(self, docs: List[str]) -> List[List[float]]:
+    async def acall(self, docs: list[str]) -> list[list[float]]:
         return await asyncio.to_thread(super().__call__, docs)
 
 
