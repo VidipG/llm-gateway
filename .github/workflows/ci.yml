@@ -25,9 +25,7 @@ jobs:
         run: uv sync --frozen --group dev
 
       - name: Audit dependencies for known vulnerabilities
-        run: |
-          uv export --frozen --no-dev --hashes -o /tmp/requirements.txt
-          uvx pip-audit --requirement /tmp/requirements.txt --no-deps
+        run: uv audit
 
       - name: Run tests with coverage
         run: uv run coverage run -m pytest tests/ -v
