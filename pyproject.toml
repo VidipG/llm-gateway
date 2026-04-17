@@ -5,15 +5,15 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
-    "anthropic[aiohttp]>=0.52.0",
-    "fastapi>=0.135.1",
-    "google-genai",
-    "ollama>=0.4.8",
-    "pydantic-settings>=2.7.0",
-    "fastembed>=0.3.0",
-    "semantic-router>=0.1.12",
-    "uvicorn>=0.42.0",
-    "redisvl>=0.17.0",
+    "anthropic[aiohttp]==0.86.0",
+    "fastapi==0.135.1",
+    "google-genai==1.68.0",
+    "ollama==0.6.1",
+    "pydantic-settings==2.13.1",
+    "fastembed==0.8.0",
+    "semantic-router==0.1.12",
+    "uvicorn==0.42.0",
+    "redisvl==0.17.0",
 ]
 
 [dependency-groups]
