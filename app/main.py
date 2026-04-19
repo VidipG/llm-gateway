@@ -4,11 +4,11 @@ from contextlib import asynccontextmanager
 from typing import AsyncIterator
 
 from fastapi import FastAPI, Request
-from redisvl.extensions.cache.llm import SemanticCache
 
 from app.api.exceptions import register_exception_handlers
 from app.api.routes import completions, health
 from app.config import get_settings
+from app.gateway.cache import build_semantic_cache
 from app.gateway.dispatcher import Dispatcher
 from app.gateway.router import Router
 from app.gateway.semantic_router import SemanticRouter
@@ -53,11 +53,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         semantic_router=semantic_router
     )
 
-    semantic_cache = SemanticCache(
-        name="llmcache",
-        redis_url="redis://localhost:6379",
-        distance_threshold=0.1
-    )
+    semantic_cache = build_semantic_cache(redis_url=settings.redis_url)
 
     app.state.dispatcher = Dispatcher(
         router=router,

@@ -125,7 +125,7 @@ class TestDispatcherStream:
         cache.astore.assert_called_once()
         _, kwargs = cache.astore.call_args
         assert kwargs["response"] == "Hello world"
-        assert kwargs["metadata"] == {"model": "test-model"}
+        assert kwargs["filters"] == {"model": "test-model"}
 
 
 class TestFormatEvent:
@@ -258,7 +258,7 @@ class TestSemanticCacheLayer:
         [r async for r in Dispatcher(mock_router, cache).stream(_make_request("hi", model="fast"), "req-1")]
 
         _, kwargs = cache.astore.call_args
-        assert kwargs["metadata"] == {"model": "gemini-2.0-flash"}
+        assert kwargs["filters"] == {"model": "gemini-2.0-flash"}
 
     @pytest.mark.asyncio
     async def test_empty_stream_does_not_store(self):
@@ -373,7 +373,7 @@ class TestSemanticCacheLayer:
         async def fake_acheck(prompt, filter_expression):
             return [{"response": stored["r"]}] if stored else []
 
-        async def fake_astore(prompt, response, metadata):
+        async def fake_astore(prompt, response, filters):
             stored["r"] = response
 
         cache = MagicMock()

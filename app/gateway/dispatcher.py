@@ -58,7 +58,7 @@ class Dispatcher:
             await self.semantic_cache.astore(
                 prompt=query,
                 response="".join(response_chunks),
-                metadata={"model": model},
+                filters={"model": model},
             )
 
         yield "data: [DONE]\n\n"

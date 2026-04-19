@@ -36,6 +36,9 @@ class Settings(BaseSettings):
         "local": "qwen3.5",
     }
 
+    # infrastructure
+    redis_url: str = "redis://localhost:6379"
+
     # per-provider timeouts in seconds
     anthropic_timeout: float = 60.0
     gemini_timeout: float = 60.0
