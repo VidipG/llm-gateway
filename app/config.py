@@ -36,13 +36,18 @@ class Settings(BaseSettings):
         "local": "qwen3.5",
     }
 
-    # infrastructure
-    redis_url: str = "redis://localhost:6379"
-
     # per-provider timeouts in seconds
     anthropic_timeout: float = 60.0
     gemini_timeout: float = 60.0
     ollama_timeout: float = 120.0
+
+    # semantic router
+    semantic_router_enabled: bool = True
+    embedding_model: str = "BAAI/bge-small-en-v1.5"
+
+    # semantic cache
+    redis_url: str = "redis://localhost:6379"
+    semantic_cache_threshold: float = 0.1
 
     model_config = SettingsConfigDict(env_file=".env")
 

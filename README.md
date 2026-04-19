@@ -1,219 +1,164 @@
-# llm-gateway
+# LLM Gateway
 
-A FastAPI server that provides a single HTTP endpoint for routing LLM requests to multiple providers. Accepts a prompt via API, routes to the target model, and streams responses back via SSE.
-
-**Supported providers:** Anthropic, Gemini, Ollama
-
----
+A FastAPI-based gateway that routes requests to multiple LLM providers through a unified interface. The system supports semantic routing, semantic caching, and uses the OpenAPI schema.
 
 ## Architecture
 
-```
-POST /v1/chat/completions
-        │
-        ▼
-   deps.py (auth)
-        │
-        ▼
-  Dispatcher
-        │
-        ▼
-  ModelRouter  ──► resolves model name / alias → Provider instance
-        │
-        ▼
-  Provider.stream()  ──► Anthropic / Gemini / Ollama SDK
-        │
-        ▼
-  StreamingResponse (SSE)
-```
+The gateway acts as an orchestrator between client applications and LLM providers.
 
-**Key components:**
-
-- `app/config.py` — Pydantic `BaseSettings`. All configuration via environment variables or `.env` file. Model routing table and aliases are config-driven.
-- `app/gateway/router.py` — maps model name (including aliases) to a `Provider` instance.
-- `app/gateway/dispatcher.py` — orchestrates the call, formats SSE output, handles mid-stream errors.
-- `app/providers/` — one class per provider. Each implements a common `Provider` ABC: `stream()` yields `StreamChunk` objects, `health_check()` returns a bool.
-- `app/schemas/` — Pydantic models for request validation (`CompletionRequest`, `Message`) and response (`StreamChunk`, `ErrorEvent`).
-
-Providers translate the normalized request format into their native SDK calls. System prompts are handled per-provider (Anthropic and Gemini take them as a top-level parameter; Ollama accepts them inline as a message role).
-
----
-
-## Setup
-
-**Requirements:** Python 3.14+, [uv](https://github.com/astral-sh/uv)
-
-```bash
-git clone <repo>
-cd llm-gateway
-uv sync
+```mermaid
+graph TD
+    Client[Client Application] -->|HTTP POST| API[FastAPI /v1/chat/completions]
+    API -->|Authenticate| Deps[Dependencies]
+    Deps -->|Dispatch| Dispatcher[Dispatcher]
+    
+    subgraph Gateway Core
+        Dispatcher -->|Check Cache| Cache[Semantic Cache - RedisVL]
+        Dispatcher -->|Resolve Model| Router[Model Router]
+        Router -->|Intent Analysis| SR[Semantic Router - FastEmbed]
+    end
+    
+    subgraph Providers
+        Router -->|Route| Anthropic[Anthropic Provider]
+        Router -->|Route| Gemini[Google Gemini Provider]
+        Router -->|Route| Ollama[Local Ollama Provider]
+    end
+    
+    Cache -.->|Hit| Dispatcher
+    Anthropic -->|Stream SSE| Dispatcher
+    Gemini -->|Stream SSE| Dispatcher
+    Ollama -->|Stream SSE| Dispatcher
+    
+    Dispatcher -->|Stream SSE| Client
 ```
 
-Create a `.env` file at the project root:
+### Components
 
-```bash
-GATEWAY_API_KEY=your-gateway-key
-ANTHROPIC_API_KEY=sk-ant-...
-GEMINI_API_KEY=AIza...
-OLLAMA_BASE_URL=http://localhost:11434  # optional, default
-```
+- **Dispatcher (`app/gateway/dispatcher.py`)**: Manages the request lifecycle, orchestrates the cache and router, and handles Server-Sent Events (SSE).
+- **Model Router (`app/gateway/router.py`)**: Maps model identifiers to provider implementations using static aliases or intent-based resolution.
+- **Semantic Router (`app/gateway/semantic_router.py`)**: Uses `FastEmbed` to categorize user prompts and select providers or models based on predefined intent categories.
+- **Semantic Cache (`app/gateway/cache.py`)**: Uses `RedisVL` to store and retrieve responses based on the semantic similarity of prompts.
+- **Providers (`app/providers/`)**: Adapters for Anthropic, Google Gemini, and Ollama SDKs that provide a uniform interface for streaming and error handling.
 
-Start the server:
+## Features
 
-```bash
-uv run python main.py
-```
+- **OpenAI-Compatible API**: Implements a completion endpoint compatible with common LLM clients.
+- **Semantic Routing**: The `auto` model identifier triggers an intent-based selection of the provider and model.
+- **Semantic Caching**: Responses are cached and retrieved using vector similarity via Redis.
+- **Streaming**: Supports real-time response delivery through SSE.
+- **Standardized Error Handling**: Provider-specific exceptions are mapped to a consistent set of gateway error types.
 
----
+## Installation and Setup
+
+### Prerequisites
+
+- Python 3.14+
+- [uv](https://github.com/astral-sh/uv)
+- Redis server
+
+### Setup
+
+1. **Clone the repository:**
+   ```bash
+   git clone <repository-url>
+   cd llm-gateway
+   ```
+
+2. **Install dependencies:**
+   ```bash
+   uv sync
+   ```
+
+3. **Environment Configuration:**
+   Create a `.env` file with the following variables:
+   ```bash
+   GATEWAY_API_KEY=your-secure-gateway-key
+   
+   # Provider API Keys
+   ANTHROPIC_API_KEY=sk-ant-...
+   GEMINI_API_KEY=AIza...
+   OLLAMA_BASE_URL=http://localhost:11434
+   
+   # Redis Configuration
+   REDIS_URL=redis://localhost:6379
+   SEMANTIC_CACHE_THRESHOLD=0.1
+   ```
+
+4. **Run the server:**
+   ```bash
+   uv run python main.py
+   ```
 
 ## Configuration
 
-All settings are read from environment variables (or `.env`). The routing table and aliases can be overridden via env:
+### Model Routing and Aliases
+
+The system maps model names to providers. Default aliases include:
+
+- `auto`: Triggers intent-based semantic routing.
+- `fast`: Mapped to `gemini-2.0-flash`.
+- `smart`: Mapped to `claude-opus-4-6`.
+- `local`: Mapped to `qwen3.5` (Ollama).
+
+### Advanced Settings
 
 | Variable | Default | Description |
 |---|---|---|
-| `HOST` | `0.0.0.0` | Server host |
-| `PORT` | `8000` | Server port |
-| `RELOAD` | `false` | Uvicorn auto-reload |
-| `GATEWAY_API_KEY` | required | Key for all `/v1/*` requests |
-| `ANTHROPIC_API_KEY` | required | Anthropic API key |
-| `GEMINI_API_KEY` | required | Google Gemini API key |
-| `OLLAMA_BASE_URL` | `http://localhost:11434` | Ollama server URL |
-| `ANTHROPIC_TIMEOUT` | `60.0` | Timeout in seconds |
-| `GEMINI_TIMEOUT` | `60.0` | Timeout in seconds |
-| `OLLAMA_TIMEOUT` | `120.0` | Timeout in seconds |
+| `SEMANTIC_ROUTER_ENABLED` | `True` | Enables intent-based routing. |
+| `EMBEDDING_MODEL` | `BAAI/bge-small-en-v1.5` | Embedding model for routing and caching. |
+| `SEMANTIC_CACHE_THRESHOLD` | `0.1` | Vector distance threshold for cache hits. |
+| `[PROVIDER]_TIMEOUT` | Varies | Timeout in seconds per provider. |
 
-**Default model routes:**
-
-| Model | Provider |
-|---|---|
-| `claude-opus-4-6`, `claude-sonnet-4-6` | anthropic |
-| `gemini-2.0-flash`, `gemini-2.5-flash`, `gemini-2.5-pro` | gemini |
-| `llama3.2`, `mistral`, `qwen3.5` | ollama |
-
-**Default aliases:** `fast` → `gemini-2.0-flash`, `smart` → `claude-opus-4-6`, `local` → `llama3.2`
-
-To override the routing table via env:
-```bash
-MODEL_ROUTES='{"gemini-2.5-flash":"gemini","llama3.2":"ollama"}'
-```
-
----
-
-## API
+## API Reference
 
 ### `POST /v1/chat/completions`
 
-**Auth:** `x-api-key` header required.
+**Authentication:** `x-api-key` header required.
 
-**Request body:**
-
+**Request Body:**
 ```json
 {
-  "model": "gemini-2.5-flash",
+  "model": "auto",
   "messages": [
-    {"role": "system", "content": "You are a helpful assistant."},
-    {"role": "user", "content": "Hello"}
+    {"role": "user", "content": "Query text here."}
   ],
   "temperature": 0.7,
-  "max_tokens": 1024,
   "stream": true
 }
 ```
 
-`stream` defaults to `true`. `temperature` and `max_tokens` are optional.
-
-**Response:** `text/event-stream`
-
-```
-data: {"id":"<request-id>","model":"gemini-2.5-flash","delta":"Hello","finish_reason":null}
-
-data: {"id":"<request-id>","model":"gemini-2.5-flash","delta":"!","finish_reason":"stop"}
-
-data: [DONE]
-```
-
-**Error event (mid-stream):**
-```
-event: error
-data: {"error":"...","code":502}
-```
-
----
+**Response:** `text/event-stream` delivering JSON chunks.
 
 ### `GET /health`
-
-Returns `{"status": "ok"}`. No auth required.
+Returns the operational status of the gateway.
 
 ### `GET /health/providers`
+Returns the connectivity status for each configured provider.
 
-Returns reachability status for each provider. No auth required.
+## Error Handling
 
-```json
-{
-  "anthropic": "ok",
-  "gemini": "ok",
-  "ollama": "unreachable"
-}
+The gateway maps provider-specific errors to the following HTTP status codes:
+
+| Error Type | Status Code | Description |
+|---|---|---|
+| `AuthenticationError` | `401` | Invalid API key. |
+| `InvalidRequestError` | `400` | Malformed request parameters. |
+| `RateLimitError` | `429` | Provider rate limit reached. |
+| `ProviderTimeoutError` | `504` | Provider response timeout. |
+| `ProviderUnavailableError` | `502` | Provider is unreachable. |
+| `UnknownModelError` | `404` | Model or alias not found. |
+| `ConfigurationError` | `500` | Gateway configuration error. |
+
+Streaming errors are returned as SSE events:
+```
+event: error
+data: {"error": "...", "code": 502, "provider": "anthropic"}
 ```
 
----
+## Testing
 
-## curl Examples
+Execute the test suite using `pytest`:
 
-**Gemini** (aliases `fast`, `smart`, `local` are also accepted in place of model names):
 ```bash
-curl -X POST http://localhost:8000/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -H "x-api-key: your-gateway-key" \
-  -d '{
-    "model": "gemini-2.5-flash",
-    "messages": [{"role": "user", "content": "say hello"}]
-  }' --no-buffer
+uv run pytest
 ```
-
-**Anthropic:**
-```bash
-curl -X POST http://localhost:8000/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -H "x-api-key: your-gateway-key" \
-  -d '{
-    "model": "claude-sonnet-4-6",
-    "messages": [{"role": "user", "content": "say hello"}]
-  }' --no-buffer
-```
-
-**Ollama** (requires `ollama serve` and model pulled locally):
-```bash
-ollama pull qwen3.5
-
-curl -X POST http://localhost:8000/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -H "x-api-key: your-gateway-key" \
-  -d '{
-    "model": "qwen3.5",
-    "messages": [{"role": "user", "content": "say hello"}]
-  }' --no-buffer
-```
-
-**With system prompt:**
-```bash
-curl -X POST http://localhost:8000/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -H "x-api-key: your-gateway-key" \
-  -d '{
-    "model": "gemini-2.5-flash",
-    "messages": [
-      {"role": "system", "content": "Reply only in haiku."},
-      {"role": "user", "content": "describe the ocean"}
-    ]
-  }' --no-buffer
-```
-
-**Health check:**
-```bash
-curl http://localhost:8000/health
-curl http://localhost:8000/health/providers
-```
-
-`--no-buffer` prevents curl from buffering SSE chunks — without it you won't see streaming output until the response completes.

@@ -53,7 +53,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         semantic_router=semantic_router
     )
 
-    semantic_cache = build_semantic_cache(redis_url=settings.redis_url)
+    semantic_cache = build_semantic_cache(
+        redis_url=settings.redis_url,
+        distance_threshold=settings.semantic_cache_threshold
+    )
 
     app.state.dispatcher = Dispatcher(
         router=router,
