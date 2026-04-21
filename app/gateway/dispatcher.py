@@ -6,6 +6,7 @@ from redisvl.extensions.cache.llm import SemanticCache
 from redisvl.query.filter import Tag
 
 from app.gateway.errors import ConfigurationError, UnknownModelError
+from app.gateway.guard import PromptGuard
 from app.gateway.router import Router
 from app.providers.base import ProviderError
 from app.schemas.request import CompletionRequest
@@ -15,11 +16,15 @@ logger = logging.getLogger(__name__)
 
 
 class Dispatcher:
-    def __init__(self, router: Router, semantic_cache: SemanticCache):
+    def __init__(self, router: Router, semantic_cache: SemanticCache, prompt_guard: PromptGuard | None = None):
         self.router = router
         self.semantic_cache = semantic_cache
+        self.prompt_guard = prompt_guard
 
     async def stream(self, request: CompletionRequest, request_id: str) -> AsyncIterator[str]:
+        if self.prompt_guard is not None:
+            self.prompt_guard.check_input(request)
+
         try:
             provider, model = await self.router.resolve(request.model, request.messages)
         except UnknownModelError as e:
@@ -54,10 +59,15 @@ class Dispatcher:
             yield _format_error(e.message, e.status_code or 502)
             return
 
-        if response_chunks:
+        assembled = "".join(response_chunks)
+
+        if self.prompt_guard is not None:
+            self.prompt_guard.audit_output(model=model, prompt=query, response=assembled, request_id=request_id)
+
+        if assembled:
             await self.semantic_cache.astore(
                 prompt=query,
-                response="".join(response_chunks),
+                response=assembled,
                 filters={"model": model},
             )
 

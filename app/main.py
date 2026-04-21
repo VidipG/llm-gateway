@@ -10,6 +10,7 @@ from app.api.routes import completions, health
 from app.config import get_settings
 from app.gateway.cache import build_semantic_cache
 from app.gateway.dispatcher import Dispatcher
+from app.gateway.guard import PromptGuard
 from app.gateway.router import Router
 from app.gateway.semantic_router import SemanticRouter
 from app.providers.anthropic import AnthropicProvider
@@ -58,9 +59,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         distance_threshold=settings.semantic_cache_threshold
     )
 
+    prompt_guard = PromptGuard(settings) if settings.prompt_guard_enabled else None
+
     app.state.dispatcher = Dispatcher(
         router=router,
-        semantic_cache=semantic_cache
+        semantic_cache=semantic_cache,
+        prompt_guard=prompt_guard,
     )
 
     yield

@@ -49,6 +49,13 @@ class Settings(BaseSettings):
     redis_url: str = "redis://localhost:6379"
     semantic_cache_threshold: float = 0.1
 
+    # prompt guard
+    prompt_guard_enabled: bool = True
+    prompt_guard_max_messages: int = 50
+    prompt_guard_max_message_chars: int = 32_000
+    prompt_guard_block_threshold: float = 0.7
+    prompt_guard_output_audit: bool = True
+
     model_config = SettingsConfigDict(env_file=".env")
 
 

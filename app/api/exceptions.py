@@ -3,7 +3,7 @@ import logging
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
-from app.gateway.errors import ConfigurationError, UnknownModelError
+from app.gateway.errors import ConfigurationError, ContentPolicyError, PromptInjectionError, UnknownModelError
 from app.providers.base import (
     AuthenticationError,
     InvalidRequestError,
@@ -24,6 +24,8 @@ _ERROR_STATUS_MAP: dict[type[Exception], int] = {
     ProviderError: 502,
     UnknownModelError: 404,
     ConfigurationError: 500,
+    PromptInjectionError: 400,
+    ContentPolicyError: 400,
 }
 
 
